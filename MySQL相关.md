@@ -74,15 +74,15 @@ B+树性质
 
 #### 1.3.1 创建高效的索引
 
-**a.主键索引规范**
+##### **a.主键索引规范**
 
 建议使用int/bitint类型自增id作为主键，避免使用uuid等无序数据作为主键。无序主键可能会导致聚簇索引进行频繁页分裂。
 
-**b.使用前缀索引**
+##### **b.使用前缀索引**
 
 如果对很长的字符列建立索引，会让索引变得大且慢。我们可以索引开始的部分字符，这样能大大节省索引空间，提高索引效率。例如，表T的字段name长度为50，可以只对其前5个字符建立索引，但是前缀索引也存在缺点，MySQL无法利用前缀索引做order by和group by 操作，也无法作为覆盖索引。
 
-**c.选择合适的索引列**
+##### **c.选择合适的索引列**
 
 区分度大的列优先
 
@@ -94,7 +94,7 @@ B+树性质
 
 字段更新不频繁
 
-**e.避免创建冗余索引**
+##### **e.避免创建冗余索引**
 
 冗余索引是指在相同的列上按照相同的顺序创建的相同类型的索引，比如有一个索引(A,B)，再创建索引(A)就是冗余索引，因为索引(A)是索引(A,B)的前缀索引。
 
@@ -102,7 +102,7 @@ B+树性质
 
 即使建立了索引，如果在查询中不注意的话，很容易造成索引失效，导致MySQL走全量扫描。
 
-**a.最左前缀匹配原则**
+##### **a.最左前缀匹配原则**
 
 对于联合索引，MySQL会一直向右匹配，直到遇到范围查询（< 、>、between、like等）就停止匹配。例如表T上有联合索引（a，b，c），只有a、ab、abc类型的查询会走这个索引，特别要注意对这种联合索引的使用
 
@@ -120,7 +120,7 @@ select * from T where month(updateTime) = 7;
 
 上面两个查询分别对索引列使用了数学运算和函数运算，通过explain查看执行计划，可以发现他们都是走的全表扫描。因为对索引字段做数学运算和函数运算，可能会破坏索引值的有序性，所以优化器会放弃走索引。
 
-隐式类型转换
+##### b.隐式类型转换
 
 比如下面这条SQL语句：
 
@@ -136,15 +136,15 @@ select * from Tradelog where cast(tradeid as signed int)=123456
 
 也就是说，它对索引字段做了函数运算，所以会出现索引失效。
 
-**c.使用like时避免前缀模糊查询'%xxx%'**
+##### **c.使用like时避免前缀模糊查询'%xxx%'**
 
 一般情况下不鼓励使用like，如果要使用的话避免以通配符%和_开头，即like '%xxx%'，它不会走索引，而like 'xxx%'能走索引。
 
-**d.避免使用select ***
+##### **d.避免使用select ***
 
 查询时尽量不要使用select *，而是只查出需要的字段，因为select * 无法利用覆盖索引优化，还会为服务器带来额外的IO、内存和cpu的消耗
 
-**e.有or条件查询**
+##### **e.有or条件查询**
 
 在WHERE子句中，如果在**OR前的条件列是索引列，而在OR后的条件列不是索引列，那么索引会失效**。
 
@@ -154,49 +154,13 @@ select * from Tradelog where cast(tradeid as signed int)=123456
 select * from Tradelog where bike_id = '8643600520' or has_del = 0;
 ```
 
-#### 1.3.3 关于执行计划
-
-type列：表的访问和连接方式。按照性能从好到坏依次为：
-
-system：表中只有一行数据，相当于系统表
-
-const：最多返回一条记录，通常表示使用主键或者唯一索引查找单个值；
-
-eq_ref：唯一性索引扫描，对于每个索引键，表示只有一条记录与之匹配，常见于主键或唯一索引扫描，对于前面的每行数据，从该表中读取一行。
-
-ref：非唯一性索引扫描，返回匹配某个单独值的所有行。
-
-range：索引，范围 < >
-
-index：扫描全索引
-
-ALL：扫描全表
-
-key：实际走的索引
-
-possible_key：可能用到的索引
-
-rows：预估要扫描的行
-
-Extra：
-
-- using index 直接通过索引返回数据，不需要访问表中的数据，索引覆盖。
-
-- using where 存储引擎过滤，使用 WHERE 子句限定传递给下一个表或者发送给客户端的数据行
-
-- using filesort 表示需要执行一次额外的遍历，从而按照排序顺序返回数据行
-
-- using temporary 表示需要创建一个临时表来处理结果，通常在order by group by
-
-- Using index condition 在MySQL中就是所谓的"索引下推"（Index Condition Pushdown，ICP）。
-
 ### 1.4 联合索引
 
 在美团外卖广告数据库查询语句里，使用频率最多的索引场景为联合索引，并且基本上每张表里都建立了联合索引，但是好多场景下使用的联合索引场景出现很多慢查询。其原因大部分都是联合索引没有命中，甚至出现滥用联合索引的情况。
 
 #### 1.4.1 联合索引特点
 
-**a.防止索引策略干扰**
+##### **a.防止索引策略干扰**
 
 MySQL查询语句里，where后面有多个单列索引，MySQL的explain执行计划会很可能干扰到你的索引执行策略，因为MySQL为了查询性能，很大概率会选中过滤效率最高的索引字段来进行查询，联合索引被MySQL的执行计划策略给干扰到的概率极小，因为联合索引本身它是多个列的组合，捆绑在一个数据域里，所以不会被MySQL执行计划受到干扰，也不会因为通过表里面的数据量过滤效率会被拆分取舍。
 
@@ -214,7 +178,7 @@ select sex ,age from table where name like '张%' and age = 18，
 
 而联合索引本身就是一个B+ Tree结构，所以就不存在前面问题。
 
-b.索引覆盖情况，减少回表
+##### b.索引覆盖情况
 
 聚簇索引B+树的结构里面，叶子结点存放的主键索引对应的行数据，非聚簇索引结构里面，叶子结点存放的是主键索引的值。通过非聚簇索引查询数据，需要通过叶子结点的主键索引值，去聚簇索引里面查询具体的行数据，这个过程称为回表
 
@@ -222,7 +186,7 @@ b.索引覆盖情况，减少回表
 
 select  name,age from table where name like '张%' and age =18，如下图所示，索引字段为name和age字段，且同时select展示列也是该两个字段，所以name和age两个索引字段组成的B+树上，遍历到叶子节点之后，无需再通过回表方式遍历聚簇索引的B+树，因为通过联合索引的非聚簇索引B+树的叶子结点，已经拿到对应数据了。
 
-c.放大索引下推的能力
+##### c.放大索引下推的能力
 
 索引下推就是把索引数据筛选的过程往下移动到存储引擎层面上完成，而不是在server层面上完成，可理解为在查询数据的时候就过滤了，不会在内存里面进行过滤。
 
@@ -244,7 +208,7 @@ c.放大索引下推的能力
 
 select  name,age from table where name like '张%' and age =18
 
-d.联合索引的最左前缀原则
+##### d.联合索引的最左前缀原则
 
 简单的查询
 
@@ -283,7 +247,7 @@ CREATE TABLE `status_test` (
 
 对于语句3索引查询过程如上图3-2所示，通过date_status = 1的数据进行过滤查询，在结果集中wm_poi_id局部有序(图中红色字段)，因此可以通过`wm_poi_id`索引直接过滤和查询，也即命中联合索引。最左前缀匹配原则的核心为通过左侧前缀过滤查询到的数据，对右侧的查询来说是局部有序的、能够通过索引结构检索的。
 
-条件过滤为常量过滤，并且order by字段能够配合常量过滤满足最左前缀，也可以通过联合索引优化排序性能；
+**条件过滤为常量过滤，并且order by字段能够配合常量过滤满足最左前缀，也可以通过联合索引优化排序性能；**
 
 CREATE TABLE `wm_ad_poi_date_status_copy` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'ID',
@@ -323,7 +287,7 @@ e) select /*!40001 SQL_NO_CACHE */ * from wm_ad_poi_date_status_copy where wm_po
 
 对于语句e，wm_poi_id为常量，(`nums`,`date_status`) 组合为有序的，过滤查询时走`wm_poi_id`和`nums`索引过滤不符合条件的记录由于nums是范围查询，此时过滤结果子集中`date_status`不是完全有序的，此时order by操作需要单独进行排序，
 
-e.聚合操作场景
+##### e.聚合操作场景
 
 我们在对group by语句进行查询优化，一般会试图通过松散索引扫描（loose index scan）和紧凑索引扫描（tight index scan）来提高语句执行效率。在不满足松散索引扫描和紧凑索引扫描的情况下，group by语句需要先扫描整个表，提取数据创建一个临时表，再根据group by语句中指定的列进行排序，排序之后就可以找到所有的分组，然后执行聚集函数（例如max、min等），这个过程在执行计划中的表现为会出现类似“Using temporary; Using filesort”的关键字；通过松散索引扫描和紧凑索引扫描来提高语句执行效率，主要的思路是希望在读取索引的基础上直接完成group by操作，以跳过创建临时表和排序操作，由于很多情况下，我们的聚合操作的分组依据的列都有多个，要想使用松散索引或者紧凑索引，需要他们来自同一个索引，也就必须配合联合索引。
 
@@ -390,7 +354,7 @@ LIMIT 300
 
 聚合查询走松散索引很重要的一个条件是group by的所有列是表中一个索引或者这个索引的最左前缀，并且不包含这个索引之外的其它列，一旦group by的字段超过一个，就必然要求表中有符合条件的联合索引，否则都无法走松散索引扫描
 
-f.数据极端分布下联合索引的作用
+##### f.数据极端分布下联合索引的作用
 
 一般情况下，如果DB中某一个字段的枚举值数量很小，则一般不建立索引，例如性别，但是如果数据分布比较极端，在一定的业务查询场景下，创建联合索引可以极大的提高查询效率。如下慢查询语句：
 
@@ -433,7 +397,154 @@ status字段值枚举
 
 `status`字段只有三个值，区分度很低，但是添加`p_id`+`status`索引之后为什么查询效率会明显提高？结合status数据分布，观察`p_id`+`status`联合索引B+树结构，可以很直观的看到，当查询条件查询的`status`不为1时，每次查询通过`p_id`+`status`索引可以将`p_id`命中的数据过滤掉很大的一部分，命中的数据量很小，结合业务中查询中多为查询`status`为0的情况，增加联合索引可以轻易的解决业务中的慢查询。
 
-## 2.优化实战
+## 2.MySQL慢查询
+
+### 2.1 整体的优化流程
+
+1.查看线上的RDS数据库监控平台，显示近两周的慢查询SQL语句：查询时间大于0.5s || 调用量较大的
+
+2.查看当前查询语句对应的数据库表的结构+当前SQL语句的执行计划
+
+根据执行计划，优化SQL语句，优化思路：
+
+- 查看已有的索引，是否满足当前的查询需求
+
+- 对于查询字段较少的语句，
+
+  - 索引覆盖（解释一下索引覆盖）
+  - 扩展信息里面是 using index 不需要回表
+
+- 根据查询条件，建立联合索引 
+
+  - 放大索引下推
+    - 扩展信息是：using index condition
+    - 解释一下MySQL的server层和存储引擎层
+    - 索引下推就是把索引数据筛选的过程往下移动到存储引擎层面上完成
+  - 优化排序性能-减少额外的文件排序
+    - 对于等值和非等值情况
+    - 本质上是利用联合索引最左前缀的有序性减少文件排序
+    - 对于联合索引满足按照最左匹配有序
+    - 具体见下面的例子
+
+  - 聚合操作场景
+
+    - 松散索引扫描（loose index scan）和紧凑索引扫描（tight index scan）
+
+    - **松散索引扫描（Loose Index Scan）**：通过跳过同一分组中的冗余记录，只扫描每个分组的第一个记录，减少扫描量，从而提高执行效率。适用于需要分组而无需扫描整个分组内容的场景。
+
+      **紧凑索引扫描（Tight Index Scan）**：通过完整扫描索引，利用索引的排序特性，在扫描的同时完成排序或分组，避免额外的排序步骤。适用于索引顺序与 `GROUP BY` 或 `ORDER BY` 顺序一致的场景。
+
+  - 数据极端分布
+
+    - 如果DB中某一个字段的枚举值数量很小，则一般不建立索引，例如性别，但是如果数据分布比较极端，在一定的业务查询场景下，创建联合索引可以极大的提高查询效率
+
+- 对于一些limit字段优化，设置为大于
+
+- 对于 or 条件要保证前后都是索引
+
+- 查找到一些索引失效的原因
+
+  - in的内容太多，导致直接走主键索引
+  - 个别字段由于 区分度太低，导致索引无效
+
+``` mysql
+select
+  id
+from
+  mbk_findbike_book_fence_record
+where
+  user_id = 85522
+  and status = 0
+  and deleted = 0;
+```
+
+联合索引优化举例：
+
+```mysql
+
+/*等值的情况*/
+# 索引是（A,B,C）
+select * where  A = 'a' order by B  -- 优化到
+select * where  A = 'a' AND B = 'b' order by C  -- 优化到
+/*不等值的情况*/
+# 索引是（A,B,C）
+select * where  A > 'a' order by B,C -- 不需要额外的排序
+select * where  A = 'a' AND C > 'c' order by B  -- 当A固定的时候，B是有序的，此时根据C条件过滤，过滤完成，根据B排序，B是有序的，											   所以这个语句是不需要进行额外排序的
+select * where  A = 'a' AND B > 'b' order by C  -- 当A固定的时候，B是有序的，范围查询的时候，速度就很快，但是 B 很多的时候，C就											   是无序，因此按照C进行排序的时候，需要一个额外的排序，using filesort
+# 索引是（A,B,C）
+select Max(C) group by A , B  -- 根据A和B分组，这样C就是有序的，可以直接通过索引计算出最大的值
+
+SELECT * FROM p_id_test WHERE p_id = 10 AND status = 0 ;
+
+/*等值的情况*/
+SELECT  * FROM p_id_test WHERE p_id = 44241135 AND status = 0 ; -- 其中p_id_test表中大概100W+数据，由于业务原因，表中status字段分布如下表，字段值为1占比超过90%
+
+/*
+status字段值枚举
+数据统计
+1-972089
+0-30889
+2-1
+*/
+
+/*id:3da50980*/
+/*ip=10.201.228.248*/
+/*+zebra:w*/
+select
+  id,
+  bike_id,
+  user_id,
+  problem_name,
+  problem_group,
+  problem_priority,
+  operate_Time
+from
+  mbk_pre_interfere_record
+where
+  bike_id = '8641939024'
+  and user_id = 69317
+  and operate_Time > '2024-07-21 10:05:18.714'
+order by
+  operate_Time desc
+limit
+  1;
+```
+
+
+
+### 2.2 关于执行计划
+
+type列：表的访问和连接方式。按照性能从好到坏依次为：
+
+- system：表中只有一行数据，相当于系统表
+- const：最多返回一条记录，通常表示使用主键或者唯一索引查找单个值；
+- eq_ref：唯一性索引扫描，对于每个索引键，表示只有一条记录与之匹配，常见于主键或唯一索引扫描，对于前面的每行数据，从该表中读取一行。
+- ref：非唯一性索引扫描，返回匹配某个单独值的所有行。
+- range：索引，范围 < >
+- index：扫描全索引
+- ALL：扫描全表
+
+key：实际走的索引
+
+possible_key：可能用到的索引
+
+rows：预估要扫描的行
+
+Extra：
+
+- using index 直接通过索引返回数据，不需要访问表中的数据，索引覆盖。
+
+- using where 存储引擎过滤，使用 WHERE 子句限定传递给下一个表或者发送给客户端的数据行
+
+- using filesort 表示需要执行一次额外的遍历，从而按照排序顺序返回数据行
+
+- using temporary 表示需要创建一个临时表来处理结果，通常在order by group by
+
+- Using index condition 在MySQL中就是所谓的"索引下推"（Index Condition Pushdown，ICP）。
+
+
+
+
 
 2.com.sankuai.bikeb.fulfill.core 
 
@@ -509,18 +620,18 @@ where
 
 core中代码
 
-  * ```java
-      /**
-      
-        * 查询某辆车一段时间内的找寻记录
-          */
-          @Select({
-            "/*+zebra:w*/select ", QUERY_FIELDS, " from ", TABLE_NAME,
-            " where bike_id = #{bikeId} and create_time between #{fromTime} AND #{toTime} and has_del = 0"
-            })
-          List<SearchBikeRecord> getRecordsByBikeIdInATimeRange(@Param("bikeId") String bikeId, @Param("fromTime") Date from,
-                                                         @Param("toTime") Date to);
-      ```
+```java
+/**
+
+  * 查询某辆车一段时间内的找寻记录
+    */
+    @Select({
+      "/*+zebra:w*/select ", QUERY_FIELDS, " from ", TABLE_NAME,
+      " where bike_id = #{bikeId} and create_time between #{fromTime} AND #{toTime} and has_del = 0"
+      })
+    List<SearchBikeRecord> getRecordsByBikeIdInATimeRange(@Param("bikeId") String bikeId, @Param("fromTime") Date from,
+                                                   @Param("toTime") Date to);
+```
 
 执行计划
 
@@ -1423,3 +1534,4 @@ read-view
 
   其中`Undo-log`主要实现数据的多版本，`ReadView`则主要实现多版本的并发控制，控制当前事务可以看到哪些数据
 
+## 
