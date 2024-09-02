@@ -28,7 +28,7 @@ GEO地理位置：
 
 **其次，每种数据类型其实在redis的底层是不区分的，有一个共同的RedisObject对象**
 
-<img src="\Redis相关.assets\image-20240901151334018.png" alt="image-20240901151334018" style="zoom: 50%;" />
+<img src=".\Redis相关.assets\image-20240901151334018.png" alt="image-20240901151334018" style="zoom: 50%;" />
 
 redisObject的结构体里面，有一个type字段，用来区分string、list、hash、set、zset
 
@@ -44,7 +44,7 @@ String类型，String有三种方式存储
 
 - SDS（简单动态字符串） ptr指向指向的就是SDS的结构体
 
-  <img src="\Redis相关.assets\image-20240901152005465.png" alt="image-20240901152005465" style="zoom: 25%;" />
+  <img src=".\Redis相关.assets\image-20240901152005465.png" alt="image-20240901152005465" style="zoom: 25%;" />
 
 Hash类型，有两种存储方法：压缩列表（ziplist）和哈希表（HashTable）
 
@@ -52,7 +52,7 @@ Hash类型，有两种存储方法：压缩列表（ziplist）和哈希表（Has
 
 压缩列表本质上就是字节数组，一堆01，会将存储的内容编码
 
-<img src="\Redis相关.assets\image-20240901152455513.png" alt="image-20240901152455513" style="zoom:25%;" />
+<img src=".\Redis相关.assets\image-20240901152455513.png" alt="image-20240901152455513" style="zoom:25%;" />
 
 主要是通过记录上一个entry的长度，通过长度的计算获取下一个元素，不是使用链表的pre和next
 
@@ -68,7 +68,7 @@ ptr指向会指向一个字典
 
 List的底层数据结构：quckList快速链表 LinkedList + zipList
 
-<img src="\Redis相关.assets\image-20240901162245016.png" alt="image-20240901162245016" style="zoom:33%;" />
+<img src=".\Redis相关.assets\image-20240901162245016.png" alt="image-20240901162245016" style="zoom:33%;" />
 
 Set的底层数据结构：inset和hashTable
 
