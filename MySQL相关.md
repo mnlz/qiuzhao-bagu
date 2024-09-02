@@ -112,7 +112,7 @@ select * from T where a>1 and b=2 and c=3
 -- 不会走联合索引
 select * from T where b=2 and c=3
 
-b.禁止在索引字段上做数学运算或函数运算
+-- b.禁止在索引字段上做数学运算或函数运算
 
 select * from T where tagId + 1 = 50;
 select * from T where month(updateTime) = 7;
