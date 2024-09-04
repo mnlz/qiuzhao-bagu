@@ -90,4 +90,11 @@ Zset的数据结构：zipList和skipList
   2，算法实现方面：跳跃表的实现比平衡树、b+树更为简单；
   <img src="https://i-blog.csdnimg.cn/blog_migrate/30de678fc87cf5c454562518bc8e0d00.png" alt="image-20230219184543704" style="zoom:50%;" />
 
-## 2.
+## 2.Redis实现分布式锁
+
+
+
+## 3.Redis的内存管理
+
+
+

@@ -1,4 +1,4 @@
-# SpringAOP和事务
+# Spring相关
 
 ## 1.声明式事务的原理
 
@@ -6,13 +6,13 @@
 
 
 
-![image-20240904151819104](./SpringAOP.assets/image-20240904151819104.png)
+![image-20240904151819104](./Spring相关.assets/image-20240904151819104.png)
 
 
 
 
 
-![image-20240904155024922](./SpringAOP.assets/image-20240904155024922.png)
+![image-20240904155024922](./Spring相关.assets/image-20240904155024922.png)
 
 事务失效，两个表都
 
@@ -20,7 +20,7 @@
 
 
 
-![image-20240904161707594](./SpringAOP.assets/image-20240904161707594.png)
+![image-20240904161707594](./Spring相关.assets/image-20240904161707594.png)
 
 ## 2.事务的传播
 
@@ -70,3 +70,15 @@ spring中的事务传播行为：
 
 
 <img src="https://album.biliimg.com/bfs/new_dyn/c0cc1e46db347b5f97c395c806d0c3be320193852.png" alt="img" style="zoom:33%;" />
+
+
+
+## 3.AOP的实现原理
+
+
+
+## 4.AOP失效的场景
+
+## 5.实习过程遇到的事务失效
+
+## 6.事务失效的解决
