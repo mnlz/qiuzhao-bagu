@@ -98,3 +98,4 @@ Zset的数据结构：zipList和skipList
 
 
 
+## 4.缓存击穿、穿透、雪崩
