@@ -117,7 +117,39 @@ AOP是面向切面编程并不是Spring独有的，Spring中也支持AOP，本�
 
  **通过Enhancer 创建子类和设置方法拦截器，动态的创建代理对象**
 
-**代理对象判断是否有实现**==MethodInterceptor （SetcallBack）接口，==如果实现就走接口的方法
+**代理对象判断是否有实现**==MethodInterceptor （SetcallBack）接口，==如果实现就走接口的方法·
+
+**反射的本质：**
+
+在我们类加载到Jvm虚拟机的时候，会生成一个Class对象，这个对象存放的类的原始信息（方法、字段、构造函数、访问修饰符、注解等）
+
+反射的本质就是，Java提供了一些API让我们可以获得并操作这个Class对象
+
+`klass` 结构位于 JVM 的元空间（Metaspace），存储了类的低层信息，是 JVM 在运行时管理类的底层结构。
+
+在 JVM 中，`Class`对象通常包含一个指针指向内部的 `klass` 结构，这样 `Class` 对象就可以通过它访问底层的元数据
+
+一个Java类在JVM中拆分为两个部分：**数据和描述信息 分别是OOP和Klass**
+
+- **对于类的信息，所有类的实例都一样的，相当于是模板**
+- **对于具体的数据oop 每个实例不相同**
+
+例如反射创建一个类：
+
+```java
+// 1. 获取类的 Class 对象
+Class<?> clazz = Class.forName("com.example.MyClass");
+// 2. 获取指定参数类型的构造函数
+Object instance = clazz.newInstance();  // 必须有无参构造函数
+Constructor<?> constructor = clazz.getConstructor(String.class, int.class);
+// 3. 使用构造函数创建实例，传入对应的参数
+Object obj = constructor.newInstance("example", 42);
+
+MyClass obj = new MyClass();
+Class<?> clazz = obj.getClass();
+```
+
+
 
 ## 4.AOP失效的场景
 
