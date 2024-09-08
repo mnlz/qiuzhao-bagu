@@ -211,3 +211,276 @@ public void test（){
 ![image-20240904155024922](./Spring相关.assets/image-20240904155024922.png)
 
 ## 8.实习过程遇到的事务失效
+
+两次事务的失效：
+
+- try catch
+- 方法内部的调用
+
+参与城乡回收-差异化点亮策略需求开发，新增车辆实体任务和车辆主位置校验扩展点，开发T0更新车辆主位置的RPC接口，将更新操作接入数据审计，解决事务失效问题；
+
+**第一次错误：由于写了try...cath错误异常没有向上抛出**
+
+默认情况下，Spring 事务只对 **运行时异常** 和 **错误** 进行回滚。
+
+```java
+@Service
+public class VehicleLocationService {
+
+    @Autowired
+    private VehicleRepository vehicleRepository;
+
+    @Autowired
+    private OperationLogRepository operationLogRepository;
+
+    /**
+     * 更新车辆主位置并插入操作记录
+     * @param vehicle 车辆信息
+     * @param operator 操作人员信息
+     */
+    @Transactional
+    public void updateVehicleAndLogOperation(Vehicle vehicle, Operator operator) {
+        try {
+            // Step 1: 更新车辆的主位置信息
+            vehicleRepository.updatePosition(vehicle);
+        } catch (Exception e) {
+            // 捕获异常，但不重新抛出，事务无法回滚
+            System.out.println("更新车辆位置失败：" + e.getMessage());
+        }
+
+        try {
+            // Step 2: 记录操作员的操作，将其插入操作日志
+            OperationLog operationLog = new OperationLog();
+            operationLog.setVehicleId(vehicle.getId());
+            operationLog.setOperatorId(operator.getId());
+            operationLog.setOperationType("更新车辆位置");
+            operationLog.setTimestamp(new Date());
+            operationLogRepository.save(operationLog);
+        } catch (Exception e) {
+            // 捕获异常，但不重新抛出，事务无法回滚
+            System.out.println("插入操作日志失败：" + e.getMessage());
+        }
+    }
+}
+
+```
+
+**方法的内部掉用导致事务失效**
+
+根源由于AOP生成的动态代理底层的代理类中，当我们通过代理类调用目标方法的时候，会先执行增强的逻辑，例如将自动提交设置为false，在真正调用目标方法的时候用的target.test(),相当于是源对象区去调用，在原对象的方法里面内部调用事务方法，其实是原对象本身调用，并不是代理对象调用，这个就会导致AOP的失效，也是我遇到的问题
+
+遇到问题的代码如下：
+
+```java
+@Service
+public class VehicleLocationService {
+
+    @Autowired
+    private VehicleRepository vehicleRepository;
+
+    @Autowired
+    private OperationLogRepository operationLogRepository;
+
+    /**
+     * 更新车辆主位置并插入操作记录
+     * @param vehicle 车辆信息
+     * @param operator 操作人员信息
+     */
+    @Transactional
+    public void updateVehicleAndLogOperation(Vehicle vehicle, Operator operator) {
+        // 调用类的内部方法，事务将无法正确回滚
+        updateVehiclePosition(vehicle);
+        insertOperationLog(vehicle, operator);
+    }
+
+    // 更新车辆位置的方法
+    // 更新车辆任务
+    @Transactional
+    public void updateVehiclePosition(Vehicle vehicle) {
+            vehicleRepository.updatePosition(vehicle);
+        	vehicleRepository.updateTask(vehicle);
+    }
+
+    // 插入操作日志的方法
+    public void insertOperationLog(Vehicle vehicle, Operator operator) {
+            OperationLog operationLog = new OperationLog();
+            operationLog.setVehicleId(vehicle.getId());
+            operationLog.setOperatorId(operator.getId());
+            operationLog.setOperationType("更新车辆位置");
+            operationLog.setTimestamp(new Date());
+            operationLogRepository.save(operationLog);
+    }
+}
+
+```
+
+解决方案和措施出发点：一定要让代理对象调用被代理的方法
+
+- **通过自调用代理对象** 
+  - 自己注入自己
+  - 通过 Spring 上下文获取当前类的代理对象来调用事务方法
+- 拆分类（使用的是这个方法）
+  - 将更新车辆位置和插入人员操作方法放到两个类中
+
+修改之后的代码
+
+```java
+@Service
+public class VehicleLocationService {
+
+    @Autowired
+    private VehicleRepository vehicleRepository;
+
+    @Autowired
+    private OperationLogService operationLogService;  // 引入新的服务类
+
+    @Transactional
+    public void updateVehicleAndLogOperation(Vehicle vehicle, Operator operator) {
+        // Step 1: 更新车辆位置（通过 OperationLogService 调用）
+        updateVehiclePosition(vehicle);
+
+        // Step 2: 插入操作日志
+        operationLogService.insertOperationLog(vehicle, operator);
+    }
+
+    @Transactional
+    public void updateVehiclePosition(Vehicle vehicle) {
+        try {
+            vehicleRepository.updatePosition(vehicle);
+        } catch (Exception e) {
+            System.out.println("更新车辆位置失败：" + e.getMessage());
+            throw e;  // 重新抛出异常，确保事务回滚
+        }
+    }
+}
+
+@Service
+public class OperationLogService {
+
+    @Autowired
+    private OperationLogRepository operationLogRepository;
+
+    @Transactional
+    public void insertOperationLog(Vehicle vehicle, Operator operator) {
+        try {
+            // 插入操作日志
+            OperationLog operationLog = new OperationLog();
+            operationLog.setVehicleId(vehicle.getId());
+            operationLog.setOperatorId(operator.getId());
+            operationLog.setOperationType("更新车辆位置");
+            operationLog.setTimestamp(new Date());
+            operationLogRepository.save(operationLog);
+        } catch (Exception e) {
+            System.out.println("插入操作日志失败：" + e.getMessage());
+            throw e;  // 重新抛出异常，确保事务回滚
+        }
+    }
+}
+
+
+
+@RestController
+@RequestMapping("/vehicle")
+public class VehicleController {
+
+    @Autowired
+    private VehicleLocationService vehicleLocationService;
+
+    @PostMapping("/update")
+    public ResponseEntity<String> updateVehicleLocation(
+        @RequestBody Vehicle vehicle,
+        @RequestBody Operator operator) {
+
+        try {
+            vehicleLocationService.updateVehicleAndLogOperation(vehicle, operator);
+            return ResponseEntity.ok("车辆位置更新成功，操作日志已插入");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body("更新车辆位置或插入操作日志失败: " + e.getMessage());
+        }
+    }
+}
+
+```
+
+
+
+Spring事务的原理
+
+```java
+UserServiceProxy对象--->UserService代理对象--->UserService代理对象.target=普通对象--->放入Map单例池
+UserService代理对象.test（）
+class UserServiceProxy extends UserService{
+    UserService target;
+public void test（){
+    // @Transactional
+    // 事务管理器新建一个数据库连接conn
+    // conn.autocommit = false
+    // target.test（);//普通对象.test() sq1 sq2 sq3
+    // conn.commit() conn.rollback();
+    
+	}
+}
+
+```
+
+
+
+@Asyn注解失效
+
+```java
+@Service
+public class RideCompletionService {
+
+    @Autowired
+    private VehicleRepository vehicleRepository;
+
+    @Autowired
+    private BillingService billingService;
+
+    @Autowired
+    private RideCompletionService self;  // 为了解决内部调用问题，先注入自身
+
+    /**
+     * 骑行结束时处理多个任务
+     * @param ride  骑行信息
+     * @param user  用户信息
+     */
+    public void completeRide(Ride ride, User user) {
+        // 1. 同步更新车辆状态
+        updateVehicleStatus(ride);
+
+        // 2. 异步生成账单
+        generateBillAsync(ride, user);
+
+        // 3. 异步记录操作日志
+        insertOperationLogAsync(ride, user);
+    }
+
+    // 更新车辆状态，同步方法
+    public void updateVehicleStatus(Ride ride) {
+        vehicleRepository.updateStatus(ride.getVehicleId(), "available");
+    }
+
+    // 异步生成账单的方法
+    @Async
+    public void generateBillAsync(Ride ride, User user) {
+        billingService.generateBill(ride, user);
+    }
+
+    // 异步记录操作日志的方法
+    @Async
+    public void insertOperationLogAsync(Ride ride, User user) {
+        OperationLog log = new OperationLog();
+        log.setRideId(ride.getId());
+        log.setUserId(user.getId());
+        log.setOperationType("骑行结束");
+        log.setTimestamp(new Date());
+        operationLogRepository.save(log);
+    }
+}
+
+```
+
+
+
