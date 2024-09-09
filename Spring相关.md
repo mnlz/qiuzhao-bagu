@@ -194,13 +194,46 @@ public void test（){
 
 ## 6.SpringIOC的原理
 
+ ![图片已经损坏 :<](https://note.youdao.com/yws/public/resource/7677c92749aa1c07c0fe242ec33351ea/xmlnote/WEBRESOURCEbfbd8d8f10bff5fac73d8d8c5dabd851/1280)
+
+SpirngIOC容器的创建过程
+
+IOC容器的本质就是**Spring通过注解或者xml等形式，创建用户配置的对象，交给一个Map进行管理，其中在很多地方可以让我们对Bean进行扩展**
+
+- 首先创建一个BeanFactory，BeanFactory是进行反射创建实例的地方，在创建BeanFactory的过程中，设置一些BeanFactoryPostProcessor
+
+- 加载和解析Bean对象的配置文件，通过BeanDefinitionReader接口的实现类，获得BeanDefinition对象,拥有需要创建Bean的信息
+
+- 进行BeanFactoryPostProcessor的处理，可以修改BeanDefinition对象
+
+- - 例如：其中的PropertyPlaceholderConfigurer的我们是用的properties文件的占位符就是在此处进行解析
+  - ConfigurationClassPostProcessor，对@Configuration和@Bean等注解的解析
+
+- 在BeanFactory中，通过反射创建Bean的实例
+
+- 实例化完成之后，开始执行初始化
+
+- - 先会填充Bean的属性，populate(Bean)
+  - 设置Aware接口的属性
+  - 执行BeanPostProcessor-Before
+  - 执行Bean的init-method
+  - 执行BeanPostProcessor-After
+
+- 完成初始化，获得完整的Bean对象，通过通过getBean获取
+
+- 销毁Bean
+
 
 
 ## 7.SpringBoot的装配原理
 
 
 
+**`自动装配的本质`**：为了从Spring.factories文件中获取对应bean的全限定类名，然后通过SpirngIOC进行Bean的创建和管理
 
+其实就是在BeanFactoryPostProcessor的子接口BeanDefinitionRegistryPostProcessor，的一个实现类ConfigurationClassPostProcessor中，进行各种注解的解析，通过解析import注解，调用getImports(sourceClass)方法，最后调用到`AutoConfigurationImportSelector：`中的
+
+ConfigurationClassPostProcessor，根据EnableAutoConfiguration.class的全限定类名，获得需要自动装配的Bean的全限定类名，最后听过BeanFctory通过反射进行类的创建，通过IOC容器进行管理
 
 ![image-20240904161707594](./Spring相关.assets/image-20240904161707594.png)
 
@@ -208,7 +241,7 @@ public void test（){
 
 
 
-![image-20240904155024922](./Spring相关.assets/image-20240904155024922.png)
+
 
 ## 8.实习过程遇到的事务失效
 
