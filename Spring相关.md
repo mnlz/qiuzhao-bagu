@@ -115,7 +115,7 @@ AOP是面向切面编程并不是Spring独有的，Spring中也支持AOP，本�
 
 通过实现**MethodInterceptor** **接口 实现** intercept方法完成，代理逻辑的增强
 
- **通过Enhancer 创建子类和设置方法拦截器，动态的创建代理对象**
+**通过Enhancer创建子类和设置方法拦截器，动态的创建代理对象**
 
 **代理对象判断是否有实现**==MethodInterceptor （SetcallBack）接口，==如果实现就走接口的方法·
 
@@ -515,5 +515,72 @@ public class RideCompletionService {
 
 ```
 
+Spring[容器](https://cloud.tencent.com/product/tke?from_column=20065&from=20065)启动初始化bean时，判断类中是否使用了@Async注解，创建切入点和切入点处理器，根据切入点创建代理对象，在调用@Async注解标注的方法时，会调用代理，执行切入点处理器invoke方法，将方法的执行提交给线程池，实现异步执行。
 
 
+
+**Spring 内部保留原始对象**：虽然最终放入缓存和外部调用的是代理对象，但 Spring 在内部仍然保留了对原始对象的引用，尤其在通过代理对象执行方法时，实际调用的底层依然是原始对象的方法，只不过这些方法可能被代理对象增强了。
+
+**原始对象在容器中的位置**：通常，原始对象在代理对象创建之后就不再直接暴露给外部调用，但它在容器内部依然存在，并且代理对象会通过某种方式（如委托模式）将方法调用传递给原始对象
+
+## 9.Spring三级缓存解决循环依赖
+
+什么是循环依赖：
+
+在Spring创建bean的过程中，A对象的某个字段依赖B对象，B对象的某个字段依赖A对象
+
+Spring 使用三级缓存来延迟完全初始化 Bean，从而解决循环依赖问题。三级缓存包含以下三个部分：
+
+1. **一级缓存**（singletonObjects）：已经完全初始化的单例 Bean。
+2. **二级缓存**（earlySingletonObjects）：提前曝光的 Bean（已经实例化但未完成依赖注入或初始化的 Bean）。
+3. **三级缓存**（singletonFactories）：用来存放创建 Bean 的工厂（`ObjectFactory`），当需要时才通过工厂获取 Bean 的早期引用。
+
+**`spring把bean的实例化和初始化分开`**
+
+1. **创建 Bean A**：
+   - Spring 首先尝试创建 A，发现 A 依赖 B，于是开始创建 B。
+   - 在创建 A 时，Spring 会将 A 的工厂方法放入三级缓存中，而此时 A 尚未完成依赖注入和初始化。
+2. **创建 Bean B**：
+   - 在创建 B 时，发现 B 依赖 A，Spring 尝试从缓存中获取 A。
+   - 在一级缓存中找不到 A，因为 A 尚未完成初始化。
+   - 在二级缓存中找不到 A，因为 A 还未完全创建出来。
+   - 在三级缓存中找到 A 的工厂方法，然后通过工厂方法获取 A 的早期引用，将其放入二级缓存。
+3. **完成 Bean B 的创建**：
+   - B 获取到了 A 的早期引用，并继续完成依赖注入和初始化。
+   - B 创建完成后，Spring 将 B 放入一级缓存。
+4. **完成 Bean A 的创建**：
+   - B 创建完成后，Spring 回到 A 的创建过程，继续为 A 进行依赖注入。
+   - 此时，A 已经可以正常获取到 B，并且完成创建，将 A 放入一级缓存。
+
+通过这种分阶段的 Bean 创建方式，Spring 能够打破循环依赖的问题。
+
+创建代理对象的过程：
+
+**创建 `ServiceA`**：
+
+- Spring 开始创建 `ServiceA`，但在注入 `ServiceB` 时发现 `ServiceB` 尚未创建，于是转去创建 `ServiceB`。
+
+**创建 `ServiceB`**：
+
+- Spring 开始创建 `ServiceB`，但是 `ServiceB` 依赖 `ServiceA`，此时回头检查 `ServiceA` 是否已经可用。
+- 在检查 `ServiceA` 时，发现它尚未完全初始化，于是通过三级缓存中的 `ObjectFactory` 提前暴露 `ServiceA` 的早期引用。
+
+**代理对象的提前暴露**：
+
+- `ServiceA` 因为使用了 `@Transactional` 注解，Spring 会为其创建一个代理对象。此时，三级缓存中的 `ObjectFactory` 返回的不是原始的 `ServiceA` 实例，而是 `ServiceA` 的代理对象。
+- `ServiceB` 中注入的是 `ServiceA` 的代理对象，而不是原始对象。
+
+**完成 `ServiceB` 的创建**：
+
+- `ServiceB` 获取到的是 `ServiceA` 的代理对象，然后 `ServiceB` 完成创建并注入 `ServiceA` 的代理对象。
+
+**完成 `ServiceA` 的创建**：
+
+- Spring 回到 `ServiceA` 的创建过程，注入 `ServiceB`，并完成 `ServiceA` 的创建。
+- 因为 `ServiceA` 需要代理，Spring 确保最终暴露给外界的也是它的代理对象。
+
+在Spring中同名的bean只有有一个
+
+通过三级缓存，Spring 可以确保在处理循环依赖时，**`代理对象能提前暴露`**，这样即使是在 Bean 尚未完全初始化之前，其他依赖它的 Bean 也能正确注入代理对象，确保 AOP 逻辑（如事务管理）能够正常工作。
+
+在循环依赖的那个bean注入的时候，并不知道需要注入的是普通对象，还是代理对象，如果只有普通对象spring不支持代理，那么二级缓存就足够了，但是spring中代理对象，而且代理对象也需要过早的保留，因此需要缓存一个方法，动态的实例化bean

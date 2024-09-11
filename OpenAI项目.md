@@ -77,7 +77,7 @@ Cookie 是应用程序通过在客户端存储临时数据，用于实现状态�
 
 
 
-<img src="./OpenAI项目.assets/image-20240906163127617.png" alt="image-20240906163127617" style="zoom:50%;" />
+<img src="./OpenAI项目.assets/image-20240906163127617.png" alt="image-20240906163127617" style="zoom: 67%;" />
 
 ### 相关问题
 
