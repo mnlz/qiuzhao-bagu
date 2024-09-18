@@ -380,3 +380,132 @@ n * 3/4 + n * random() 。所以，比如你原本计划对一个缓存建立的
 使用异步的方式，类似MySQL的主从复制，通过监听Binlog日志，解析Binlog日志，异步更新缓存
 
 <img src="./Redis相关.assets/image-20240905202623313.png" alt="image-20240905202623313" style="zoom: 50%;" />
+
+## 6.Redis的高可用
+
+### 6.1 主从架构
+
+配置命令
+
+```shell
+# 配置主从复制
+replicaof 192.168.0.60 6379 # 从本机6379的redis实例复制数据，Redis 5.0之前使用slaveof
+replica‐read‐only yes # 配置从节点只读
+```
+
+
+
+架构图
+
+<img src="./Redis相关.assets/image-20240911162542742.png" alt="image-20240911162542742" style="zoom: 67%;" />
+
+#### **主从复制-全量**
+
+<img src="./Redis相关.assets/image-20240911163347580.png" alt="image-20240911163347580" style="zoom:67%;" />
+
+主从复制的过程
+
+- slave节点连上master节点，会发送一个psync命令同步数据
+- 收到psync命令执行bgsave生成最新的rdb快照数据
+- 将rdb数据发送给slave，slave清空数据并开始加载master节点发来的rdb文件
+- 在同步的过程中，master可能还被调用，会将调用的命令写入repl buffer
+- master将repl buffer中缓存的命令发送给slave，slave执行命令，完成回放
+- master通过socket长连接把命令发送给从节点，保证数据的一致性
+
+#### **数据部分复制-增量**
+
+整个过程类似断点续传
+
+<img src="./Redis相关.assets/image-20240911191151336.png" alt="image-20240911191151336" style="zoom: 67%;" />
+
+slave断开一段时间重新连接数据同步过程
+
+- 断开连接从新连接后，slave发送psync命令，**`携带offset访问`**
+- master主机收到这个offset
+  - offset在master的repl backlog buffer里面，会将offset之后的命令一次性同步给slave节点
+  - 不在里面，全量同步
+
+- master通过socket长连接持续把写命令发送给从节点，保证数据一致性
+
+#### 主从复制风暴
+
+为了缓解主从复制风暴(多个从节点同时复制主节点导致主节点压力过大)，可以做如 下架构，让部分从节点与从节点(与主节点同步)同步数据
+
+<img src="./Redis相关.assets/image-20240911192007141.png" alt="image-20240911192007141" style="zoom: 67%;" />
+
+### 6.2 哨兵架构
+
+<img src="./Redis相关.assets/image-20240911192411893.png" alt="image-20240911192411893" style="zoom:50%;" />
+
+sentinel哨兵是特殊的redis服务，不提供读写服务，主要用来监控redis实例节点。 
+
+哨兵架构下client端第一次从哨兵找出redis的主节点，后续就直接访问redis的主节点，不会每次都通过 sentinel代理访问redis的主节点，当redis的主节点发生变化，哨兵会第一时间感知到，并且将新的redis主节点通知给client端(这里面redis的client端一般都实现了订阅功能，订阅sentinel发布的节点变动消息)
+
+**哨兵模式的缺点**
+
+如果master节点异常，则会做主从切换，将某一台slave作为master，哨兵的配置略微复杂，并且性能和高可用性等各方面表现 一般，**特别是在主从切换的瞬间`存在访问瞬断`的情况**，而且哨兵模式只有一个主节点对外提供服务，没法支持 很高的并发，且单个主节点内存也不宜设置得过大，否则会导致持久化文件过大，影响数据恢复或主从同步的效率
+
+因为所有的请求都同时打到一个master节点上，而且在选取新的slave作为master的时候服务会暂停
+
+### 6.3 高可用集群模式
+
+<img src="./Redis相关.assets/image-20240911194354677.png" alt="image-20240911194354677" style="zoom: 67%;" />
+
+分片集群，每个master存储的都是分片的数据，并不是全部的数据
+
+redis集群需要至少三个master节点，我们这里搭建三个master节点，并且给每个master再搭建一个slave节 点，总共6个redis节点
+
+Redis Cluster 将所有数据划分为 16384 个slots(槽位)，每个节点负责其中一部分槽位。槽位的信息存储于每个节点中。 当 Redis Cluster的客户端来连接集群时，它也会得到一份集群的槽位配置信息并将其缓存在客户端本地。这样当客户端要查找某个key 时，可以直接定位到目标节点。同时因为槽位的信息可能会存在客户端与服务器不一致的情况，还需要纠正机制来实现槽位信息的校验调整
+
+#### 槽定位算法
+
+Cluster 默认会对 key 值使用 crc16 算法进行 hash 得到一个整数值，然后用这个整数值对 16384 进行取模 来得到具体槽位。
+
+```java
+ HASH_SLOT = CRC16(key) mod 16384
+```
+
+#### 跳转重定位
+
+当客户端向一个错误的节点发出了指令，该节点会发现指令的 key 所在的槽位并不归自己管理，这时它会向客户端发送一个特殊的跳转指令携带目标操作的节点地址，告诉客户端去连这个节点去获取数据。客户端收到指令后除了跳转到正确的节点上去操作，还会同步更新纠正本地的槽位映射表缓存，后续所有 key 将使用新的槽位映射表。
+
+<img src="./Redis相关.assets/image-20240911194755168.png" alt="image-20240911194755168" style="zoom:67%;" />
+
+#### 网络抖动
+
+真实世界的机房网络往往并不是风平浪静的，它们经常会发生各种各样的小问题。比如网络抖动就是非常常见 的一种现象，突然之间部分连接变得不可访问，然后很快又恢复正常。为解决这种问题，Redis Cluster 提供了一种选项 `cluster-node-timeout`，表示当某个节点持续 timeout 的时间失联时，才可以认定该节点出现故障，需要进行主从切换。如果没有这个选项，网络抖动会导致主从频繁切换 (数据的重新复制)。
+
+#### Redis集群选举
+
+当slave发现自己的master变为FAIL状态时，便尝试进行Failover，以期成为新的master。由于挂掉的master 可能会有多个slave，从而存在多个slave竞争成为master节点的过程， 
+
+- slave发现自己的master变为FAIL 
+- 将自己记录的集群currentEpoch加1，并广播FAILOVER_AUTH_REQUEST 信息 
+- 其他节点收到该信息，**`只有master响应，判断请求者的合法性`**，并发送FAILOVER_AUTH_ACK，对每一个 epoch只发送一次ack 
+- 尝试failover的slave收集master返回的FAILOVER_AUTH_ACK 
+- slave收到**`超过半数master的ack后变成新Master`**(这里解释了集群为什么至少需要三个主节点，如果只有两个，当其中一个挂了，只剩一个主节点是不能选举成功的) 
+- slave广播Pong消息通知其他集群节点。
+
+从节点并不是在主节点一进入 FAIL 状态就马上尝试发起选举，而是有一定延迟，**一定的延迟确保我们等待FAIL状态在集群中传播**，slave如果立即尝试选举，其它masters或许尚未意识到FAIL状态，可能会拒绝投票，延迟计算公式：
+
+```java
+DELAY = 500ms + random(0 ~ 500ms) + SLAVE_RANK * 1000ms
+```
+
+SLAVE_RANK表示此slave已经从master复制数据的总量的rank。Rank越小代表已复制的数据越新。这种方式下，持有最新数据的slave将会首先发起选举（理论上）因为rank越小表示的数据越新，slave节点上的数据越多，或者说越接近master，成为master的概率应该越大，因此延迟时间就应该越小
+
+#### 集群的脑裂问题
+
+什么是脑裂问题：由于网络分区或其他问题，集群中的部分节点彼此失去通信，**导致多个主节点（Master）在同一时间为同一数据集服务**，网络分区导致脑裂后多个主节点对外提供写服务，一旦网络分区恢复，会将其中一个主节点变为从节点，这时会有大量数据丢失。 
+
+规避方法可以在redis配置里加上参数(这种方法不可能百分百避免数据丢失，参考集群leader选举机制)： 
+
+```shell
+min‐replicas‐to‐write 1 
+```
+
+写数据成功最少同步的slave数量，这个数量可以模仿大于半数机制配置，比如 集群总共三个节点可以配置1，加上leader就是2，超过了半数 注意：这个配置在一定程度上会影响集群的可用性，比如slave要是少于1个，这个集群就算leader正常也不能提供服务了，需要具体场景权衡选择.
+
+#### Redis集群为什么至少需要三个master节点，并且推荐节点数为奇数？ 
+
+因为新master的选举需要大于半数的集群master节点同意才能选举成功，如果只有两个master节点，当其中一个挂了，是达不到选举新master的条件的。 奇数个master节点可以在满足选举该条件的基础上节省一个节点，比如三个master节点和四个master节点的集群相比，大家如果都挂了一个master节点都能选举新master节点，如果都挂了两个master节点都没法选举新master节点了，所以奇数的master节点更多的是从节省机器资源角度出发说的。
